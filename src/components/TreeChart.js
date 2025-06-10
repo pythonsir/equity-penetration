@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 
 const TreeChart = ({ data }) => {
     const svgRef = useRef();
+    const containerRef = useRef();
     const [collapsedNodes, setCollapsedNodes] = useState(new Set());
     const currentTransformRef = useRef(null);
 
@@ -120,10 +121,11 @@ const TreeChart = ({ data }) => {
         const containerWidth = svgRef.current.clientWidth || window.innerWidth;
         const containerHeight = svgRef.current.clientHeight || window.innerHeight;
 
-        // Create the SVG container
+        // Create the SVG container with full width and height
         const svg = d3.select(svgRef.current)
-            .attr("width", containerWidth)
-            .attr("height", containerHeight);
+            .attr("width", "100%")
+            .attr("height", "100%")
+            .attr("viewBox", [0, 0, containerWidth, containerHeight].join(' '));
 
         // Define arrowhead marker
         svg.append("defs").append("marker")
@@ -164,14 +166,15 @@ const TreeChart = ({ data }) => {
         let maxY = -Infinity;
 
         visibleNodes.forEach(d => {
-            minX = Math.min(minX, d.x);
-            maxX = Math.max(maxX, d.x);
-            minY = Math.min(minY, d.y);
-            maxY = Math.max(maxY, d.y);
+            minX = Math.min(minX, d.x - 60); // Account for node width (120/2)
+            maxX = Math.max(maxX, d.x + 60); // Account for node width (120/2)
+            minY = Math.min(minY, d.y - 30); // Account for node height (60/2)
+            maxY = Math.max(maxY, d.y + 30); // Account for node height (60/2)
         });
 
-        const centerX = (containerWidth - (maxX - minX)) / 2 - minX;
-        const centerY = 50; // Add some padding at the top
+        // Calculate the width and height of the tree
+        const treeWidth = maxX - minX;
+        const treeHeight = maxY - minY;
 
         // Add links between nodes
         const links = g.selectAll(".link")
@@ -183,10 +186,10 @@ const TreeChart = ({ data }) => {
         // Create paths for links with segments
         links.each(function (d) {
             const link = d3.select(this);
-            const sourceX = d.source.x + centerX;
-            const sourceY = d.source.y + centerY;
-            const targetX = d.target.x + centerX;
-            const targetY = d.target.y + centerY;
+            const sourceX = d.source.x;
+            const sourceY = d.source.y;
+            const targetX = d.target.x;
+            const targetY = d.target.y;
             const midY = (sourceY + targetY) / 2;
 
             // Vertical line from source
@@ -238,7 +241,7 @@ const TreeChart = ({ data }) => {
             .enter()
             .append("g")
             .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
-            .attr("transform", d => `translate(${d.x + centerX},${d.y + centerY})`)
+            .attr("transform", d => `translate(${d.x},${d.y})`)
             .style("cursor", d => d.data.children && d.data.children.length > 0 ? "pointer" : "default"); // Change cursor for parent nodes
 
         // Add rectangles for each node
@@ -327,20 +330,23 @@ const TreeChart = ({ data }) => {
             // Use the previous transform if available
             initialTransform = previousTransform;
         } else {
-            // Calculate initial transform to fit the tree
-            const treeWidth = maxX - minX + 240; // Add some padding
-            const treeHeight = maxY - minY + 100;
+            // Calculate padding (as a percentage of container size)
+            const paddingX = containerWidth * 0.1;
+            const paddingY = containerHeight * 0.1;
 
-            const scale = Math.min(
-                containerWidth / treeWidth,
-                containerHeight / treeHeight,
-                1 // Cap at 1 to avoid making it too large
-            ) * 0.9; // Slightly smaller to ensure it fits
+            // Calculate the scale to fit the tree in the viewport with padding
+            const scaleX = (containerWidth - paddingX * 2) / treeWidth;
+            const scaleY = (containerHeight - paddingY * 2) / treeHeight;
+            const scale = Math.min(scaleX, scaleY, 1) * 0.9; // Slightly smaller to ensure it fits
 
+            // Calculate offsets to center the tree
+            const offsetX = (containerWidth / scale - treeWidth) / 2 - minX;
+            const offsetY = (containerHeight / scale - treeHeight) / 2 - minY;
+
+            // Create the transform
             initialTransform = d3.zoomIdentity
-                .translate(containerWidth / 2, containerHeight / 4)
                 .scale(scale)
-                .translate(-treeWidth / 2, 0);
+                .translate(offsetX, offsetY);
         }
 
         // Apply the transform
@@ -348,11 +354,36 @@ const TreeChart = ({ data }) => {
 
         // Add resize handler
         const handleResize = () => {
+            if (!svgRef.current) return;
+
             const newWidth = svgRef.current.clientWidth || window.innerWidth;
             const newHeight = svgRef.current.clientHeight || window.innerHeight;
 
-            svg.attr("width", newWidth)
-                .attr("height", newHeight);
+            // Update viewBox for responsiveness
+            svg.attr("viewBox", [0, 0, newWidth, newHeight].join(' '));
+
+            // If no custom transform is set, recalculate the transform
+            if (!currentTransformRef.current) {
+                // Calculate padding (as a percentage of container size)
+                const paddingX = newWidth * 0.1;
+                const paddingY = newHeight * 0.1;
+
+                // Calculate the scale to fit the tree in the viewport with padding
+                const scaleX = (newWidth - paddingX * 2) / treeWidth;
+                const scaleY = (newHeight - paddingY * 2) / treeHeight;
+                const scale = Math.min(scaleX, scaleY, 1) * 0.9;
+
+                // Calculate offsets to center the tree
+                const offsetX = (newWidth / scale - treeWidth) / 2 - minX;
+                const offsetY = (newHeight / scale - treeHeight) / 2 - minY;
+
+                // Create and apply the transform
+                const resizeTransform = d3.zoomIdentity
+                    .scale(scale)
+                    .translate(offsetX, offsetY);
+
+                svg.call(zoom.transform, resizeTransform);
+            }
         };
 
         window.addEventListener('resize', handleResize);
@@ -364,8 +395,8 @@ const TreeChart = ({ data }) => {
     }, [data, collapsedNodes, isVisible, toggleNode, blueColor]);
 
     return (
-        <div className="tree-chart-container" style={{ width: '100%', height: '100vh', position: 'relative' }}>
-            <svg ref={svgRef}></svg>
+        <div ref={containerRef} className="tree-chart-container" style={{ width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' }}>
+            <svg ref={svgRef} style={{ width: '100%', height: '100%' }}></svg>
         </div>
     );
 };
