@@ -1,14 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as d3 from 'd3';
-import { PlusCircleFilled, MinusCircleFilled } from '@ant-design/icons';
-import * as ReactDOM from 'react-dom/client';
 
 const TreeChart = ({ data }) => {
     const svgRef = useRef();
     const [collapsedNodes, setCollapsedNodes] = useState(new Set());
-    const [iconContainers, setIconContainers] = useState({});
-    const rootsRef = useRef(new Map());
-    const zoomRef = useRef(null);
     const currentTransformRef = useRef(null);
 
     // Define colors
@@ -110,29 +105,6 @@ const TreeChart = ({ data }) => {
 
         return true;
     }, [collapsedNodes]);
-
-    // Clean up function for removing icons
-    const cleanupIcons = useCallback(() => {
-        // Unmount all roots and remove containers
-        rootsRef.current.forEach((root, nodeId) => {
-            try {
-                if (root) {
-                    root.unmount();
-                }
-            } catch (e) {
-                console.warn('Error unmounting root:', e);
-            }
-
-            const container = iconContainers[nodeId];
-            if (container && container.parentNode) {
-                container.parentNode.removeChild(container);
-            }
-        });
-
-        // Clear the roots map
-        rootsRef.current.clear();
-        setIconContainers({});
-    }, [iconContainers]);
 
     // Main rendering effect
     useEffect(() => {
@@ -301,9 +273,6 @@ const TreeChart = ({ data }) => {
             .text(d => d.data.name)
             .call(wrapText, 110); // Apply text wrapping
 
-        // Add icon containers for nodes with children at the bottom center of the node
-        const newIconContainers = {};
-
         // Add SVG icons directly in the D3 visualization
         node.filter(d => d.data.children && d.data.children.length > 0).each(function (d) {
             const nodeGroup = d3.select(this);
@@ -340,9 +309,6 @@ const TreeChart = ({ data }) => {
                 });
         });
 
-        // Update the icon containers state
-        setIconContainers(newIconContainers);
-
         // Add zoom behavior
         const zoom = d3.zoom()
             .scaleExtent([0.2, 3]) // Allow more zoom range
@@ -351,9 +317,6 @@ const TreeChart = ({ data }) => {
                 // Store the current transform for later use
                 currentTransformRef.current = event.transform;
             });
-
-        // Store zoom reference
-        zoomRef.current = zoom;
 
         svg.call(zoom);
 
