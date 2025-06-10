@@ -47,28 +47,50 @@
 
 项目使用JSON格式的数据来描述股权关系。以下是数据格式示例：
 
-```json
-{
-  "name": "公司A",
-  "children": [
-    {
-      "name": "公司B",
-      "value": 60,
-      "children": [...]
-    },
-    {
-      "name": "公司C",
-      "value": 40,
-      "children": [...]
-    }
-  ]
-}
+```javascript
+// 股权穿透数据结构
+const sampleData = {
+    name: "山东罗罗丁子集团有限公司",
+    id: "parent-company",
+    value: 100,
+    hasChildren: true,
+    children: [
+        {
+            name: "山东制停科科技集团有限责任公司",
+            id: "intermediate-company",
+            value: 100,
+            percentage: 100,
+            hasChildren: true,
+            children: [
+                {
+                    name: "山东映客科技有限责任公司",
+                    id: "main-company",
+                    value: 100,
+                    percentage: 60,
+                    hasChildren: true,
+                    children: [...]
+                }
+            ]
+        },
+        {
+            name: "吴小宝",
+            id: "individual-shareholder",
+            value: 40,
+            percentage: 40,
+            hasChildren: false,
+            children: []
+        }
+    ]
+};
 ```
 
 其中：
-- `name`: 公司名称
-- `value`: 持股比例（百分比）
-- `children`: 子公司列表
+- `name`: 公司或个人名称
+- `id`: 唯一标识符
+- `value`: 节点权重值
+- `percentage`: 持股比例（百分比）
+- `hasChildren`: 是否有子节点
+- `children`: 子公司/持股公司列表
 
 ## 技术栈
 
