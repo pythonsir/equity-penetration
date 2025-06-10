@@ -6,6 +6,11 @@ const TreeChart = ({ data }) => {
     const containerRef = useRef();
     const [collapsedNodes, setCollapsedNodes] = useState(new Set());
     const currentTransformRef = useRef(null);
+    const [dimensions, setDimensions] = useState({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        hasChanged: false
+    });
 
     // Define colors
     const blueColor = "#6495ED"; // Blue color for all borders and lines
@@ -107,6 +112,66 @@ const TreeChart = ({ data }) => {
         return true;
     }, [collapsedNodes]);
 
+    // Function to get tree dimensions
+    const getTreeDimensions = useCallback((nodes) => {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        nodes.forEach(d => {
+            minX = Math.min(minX, d.x - 60); // Account for node width (120/2)
+            maxX = Math.max(maxX, d.x + 60); // Account for node width (120/2)
+            minY = Math.min(minY, d.y - 30); // Account for node height (60/2)
+            maxY = Math.max(maxY, d.y + 30); // Account for node height (60/2)
+        });
+
+        return {
+            minX, maxX, minY, maxY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
+    }, []);
+
+    // Function to calculate optimal transform
+    const calculateOptimalTransform = useCallback((treeDimensions, containerWidth, containerHeight) => {
+        const { minX, minY, width: treeWidth, height: treeHeight } = treeDimensions;
+
+        // Calculate padding (as a percentage of container size)
+        const paddingX = containerWidth * 0.1;
+        const paddingY = containerHeight * 0.1;
+
+        // Calculate the scale to fit the tree in the viewport with padding
+        const scaleX = (containerWidth - paddingX * 2) / treeWidth;
+        const scaleY = (containerHeight - paddingY * 2) / treeHeight;
+        const scale = Math.min(scaleX, scaleY, 1) * 0.9; // Slightly smaller to ensure it fits
+
+        // Calculate offsets to center the tree
+        const offsetX = (containerWidth / scale - treeWidth) / 2 - minX;
+        const offsetY = (containerHeight / scale - treeHeight) / 2 - minY;
+
+        // Create the transform
+        return d3.zoomIdentity
+            .scale(scale)
+            .translate(offsetX, offsetY);
+    }, []);
+
+    // Effect for window resize
+    useEffect(() => {
+        const handleResize = () => {
+            setDimensions({
+                width: window.innerWidth,
+                height: window.innerHeight,
+                hasChanged: true
+            });
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+        };
+    }, []);
+
     // Main rendering effect
     useEffect(() => {
         if (!data || !svgRef.current) return;
@@ -118,8 +183,8 @@ const TreeChart = ({ data }) => {
         d3.select(svgRef.current).selectAll("*").remove();
 
         // Get the actual dimensions of the container
-        const containerWidth = svgRef.current.clientWidth || window.innerWidth;
-        const containerHeight = svgRef.current.clientHeight || window.innerHeight;
+        const containerWidth = dimensions.width;
+        const containerHeight = dimensions.height;
 
         // Create the SVG container with full width and height
         const svg = d3.select(svgRef.current)
@@ -160,21 +225,7 @@ const TreeChart = ({ data }) => {
         const visibleLinks = root.links().filter(d => isVisible(d.source) && isVisible(d.target));
 
         // Calculate dimensions for centering
-        let minX = Infinity;
-        let maxX = -Infinity;
-        let minY = Infinity;
-        let maxY = -Infinity;
-
-        visibleNodes.forEach(d => {
-            minX = Math.min(minX, d.x - 60); // Account for node width (120/2)
-            maxX = Math.max(maxX, d.x + 60); // Account for node width (120/2)
-            minY = Math.min(minY, d.y - 30); // Account for node height (60/2)
-            maxY = Math.max(maxY, d.y + 30); // Account for node height (60/2)
-        });
-
-        // Calculate the width and height of the tree
-        const treeWidth = maxX - minX;
-        const treeHeight = maxY - minY;
+        const treeDimensions = getTreeDimensions(visibleNodes);
 
         // Add links between nodes
         const links = g.selectAll(".link")
@@ -326,73 +377,23 @@ const TreeChart = ({ data }) => {
         // Set initial transform - either restore previous or calculate new one
         let initialTransform;
 
-        if (previousTransform) {
-            // Use the previous transform if available
+        if (previousTransform && !dimensions.hasChanged) {
+            // Use the previous transform if available and dimensions haven't changed
             initialTransform = previousTransform;
         } else {
-            // Calculate padding (as a percentage of container size)
-            const paddingX = containerWidth * 0.1;
-            const paddingY = containerHeight * 0.1;
+            // Calculate new optimal transform
+            initialTransform = calculateOptimalTransform(treeDimensions, containerWidth, containerHeight);
 
-            // Calculate the scale to fit the tree in the viewport with padding
-            const scaleX = (containerWidth - paddingX * 2) / treeWidth;
-            const scaleY = (containerHeight - paddingY * 2) / treeHeight;
-            const scale = Math.min(scaleX, scaleY, 1) * 0.9; // Slightly smaller to ensure it fits
-
-            // Calculate offsets to center the tree
-            const offsetX = (containerWidth / scale - treeWidth) / 2 - minX;
-            const offsetY = (containerHeight / scale - treeHeight) / 2 - minY;
-
-            // Create the transform
-            initialTransform = d3.zoomIdentity
-                .scale(scale)
-                .translate(offsetX, offsetY);
+            // Reset the hasChanged flag after applying the new transform
+            if (dimensions.hasChanged) {
+                setDimensions(prev => ({ ...prev, hasChanged: false }));
+            }
         }
 
         // Apply the transform
         svg.call(zoom.transform, initialTransform);
 
-        // Add resize handler
-        const handleResize = () => {
-            if (!svgRef.current) return;
-
-            const newWidth = svgRef.current.clientWidth || window.innerWidth;
-            const newHeight = svgRef.current.clientHeight || window.innerHeight;
-
-            // Update viewBox for responsiveness
-            svg.attr("viewBox", [0, 0, newWidth, newHeight].join(' '));
-
-            // If no custom transform is set, recalculate the transform
-            if (!currentTransformRef.current) {
-                // Calculate padding (as a percentage of container size)
-                const paddingX = newWidth * 0.1;
-                const paddingY = newHeight * 0.1;
-
-                // Calculate the scale to fit the tree in the viewport with padding
-                const scaleX = (newWidth - paddingX * 2) / treeWidth;
-                const scaleY = (newHeight - paddingY * 2) / treeHeight;
-                const scale = Math.min(scaleX, scaleY, 1) * 0.9;
-
-                // Calculate offsets to center the tree
-                const offsetX = (newWidth / scale - treeWidth) / 2 - minX;
-                const offsetY = (newHeight / scale - treeHeight) / 2 - minY;
-
-                // Create and apply the transform
-                const resizeTransform = d3.zoomIdentity
-                    .scale(scale)
-                    .translate(offsetX, offsetY);
-
-                svg.call(zoom.transform, resizeTransform);
-            }
-        };
-
-        window.addEventListener('resize', handleResize);
-
-        return () => {
-            window.removeEventListener('resize', handleResize);
-        };
-
-    }, [data, collapsedNodes, isVisible, toggleNode, blueColor]);
+    }, [data, dimensions, collapsedNodes, isVisible, toggleNode, getTreeDimensions, calculateOptimalTransform, blueColor]);
 
     return (
         <div ref={containerRef} className="tree-chart-container" style={{ width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' }}>
