@@ -1,5 +1,11 @@
 .App {
   text-align: center;
+  padding: 0;
+  margin: 0;
+  background-color: #fff;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 .App-logo {
@@ -35,4 +41,57 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.equity-penetration-container {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.header-card {
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.upload-section {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.main-visualization {
+  background-color: #fff;
+  padding: 16px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+}
+
+.tree-chart-container {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background-color: #fff;
+}
+
+.node text {
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+}
+
+.link {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1px;
 }
