@@ -1,8 +1,13 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as d3 from 'd3';
+import { PlusCircleFilled, MinusCircleFilled } from '@ant-design/icons';
+import * as ReactDOM from 'react-dom/client';
 
 const TreeChart = ({ data }) => {
     const svgRef = useRef();
+    const [collapsedNodes, setCollapsedNodes] = useState(new Set());
+    const [iconContainers, setIconContainers] = useState({});
+    const rootsRef = useRef(new Map());
 
     // Define colors
     const blueColor = "#6495ED"; // Blue color for all borders and lines
@@ -69,8 +74,66 @@ const TreeChart = ({ data }) => {
         });
     };
 
+    // Function to toggle node collapse state
+    const toggleNode = useCallback((d) => {
+        const nodeId = d.data.id;
+        setCollapsedNodes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(nodeId)) {
+                newSet.delete(nodeId);
+            } else {
+                newSet.add(nodeId);
+            }
+            return newSet;
+        });
+    }, []);
+
+    // Function to check if a node should be visible
+    const isVisible = useCallback((d) => {
+        // Root is always visible
+        if (d.depth === 0) return true;
+
+        // If any ancestor is collapsed, this node is not visible
+        let ancestor = d.parent;
+        while (ancestor) {
+            if (collapsedNodes.has(ancestor.data.id)) {
+                return false;
+            }
+            ancestor = ancestor.parent;
+        }
+
+        return true;
+    }, [collapsedNodes]);
+
+    // Clean up function for removing icons
+    const cleanupIcons = useCallback(() => {
+        // Unmount all roots and remove containers
+        rootsRef.current.forEach((root, nodeId) => {
+            try {
+                if (root) {
+                    root.unmount();
+                }
+            } catch (e) {
+                console.warn('Error unmounting root:', e);
+            }
+
+            const container = iconContainers[nodeId];
+            if (container && container.parentNode) {
+                container.parentNode.removeChild(container);
+            }
+        });
+
+        // Clear the roots map
+        rootsRef.current.clear();
+        setIconContainers({});
+    }, [iconContainers]);
+
+    // Main rendering effect
     useEffect(() => {
         if (!data || !svgRef.current) return;
+
+        // Clean up previous icons
+        cleanupIcons();
 
         // Clear any existing SVG content
         d3.select(svgRef.current).selectAll("*").remove();
@@ -105,32 +168,24 @@ const TreeChart = ({ data }) => {
         // Create the hierarchical data structure
         const root = d3.hierarchy(data);
 
-        // Count max nodes at any level for better spacing
-        const countNodesByLevel = {};
-        root.each(d => {
-            if (!countNodesByLevel[d.depth]) {
-                countNodesByLevel[d.depth] = 0;
-            }
-            countNodesByLevel[d.depth]++;
-        });
-
-        const maxNodesAtLevel = Math.max(...Object.values(countNodesByLevel));
-        const horizontalSpacing = Math.max(150, containerWidth / (maxNodesAtLevel + 1));
-
         // Define tree layout - vertical orientation
         const treeLayout = d3.tree()
-            .nodeSize([horizontalSpacing, 140]); // Increase vertical spacing for text wrapping
+            .nodeSize([150, 140]); // Horizontal and vertical spacing
 
         // Assign the data to the tree layout
         treeLayout(root);
 
-        // Center the tree horizontally
+        // Filter visible nodes and links
+        const visibleNodes = root.descendants().filter(isVisible);
+        const visibleLinks = root.links().filter(d => isVisible(d.source) && isVisible(d.target));
+
+        // Calculate dimensions for centering
         let minX = Infinity;
         let maxX = -Infinity;
         let minY = Infinity;
         let maxY = -Infinity;
 
-        root.each(d => {
+        visibleNodes.forEach(d => {
             minX = Math.min(minX, d.x);
             maxX = Math.max(maxX, d.x);
             minY = Math.min(minY, d.y);
@@ -142,7 +197,7 @@ const TreeChart = ({ data }) => {
 
         // Add links between nodes
         const links = g.selectAll(".link")
-            .data(root.links())
+            .data(visibleLinks)
             .enter()
             .append("g")
             .attr("class", "link");
@@ -201,11 +256,12 @@ const TreeChart = ({ data }) => {
 
         // Create a group for each node
         const node = g.selectAll(".node")
-            .data(root.descendants())
+            .data(visibleNodes)
             .enter()
             .append("g")
             .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
-            .attr("transform", d => `translate(${d.x + centerX},${d.y + centerY})`);
+            .attr("transform", d => `translate(${d.x + centerX},${d.y + centerY})`)
+            .style("cursor", d => d.data.children && d.data.children.length > 0 ? "pointer" : "default"); // Change cursor for parent nodes
 
         // Add rectangles for each node
         node.append("rect")
@@ -238,6 +294,48 @@ const TreeChart = ({ data }) => {
             })
             .text(d => d.data.name)
             .call(wrapText, 110); // Apply text wrapping
+
+        // Add icon containers for nodes with children at the bottom center of the node
+        const newIconContainers = {};
+
+        // Add SVG icons directly in the D3 visualization
+        node.filter(d => d.data.children && d.data.children.length > 0).each(function (d) {
+            const nodeGroup = d3.select(this);
+            const isCollapsed = collapsedNodes.has(d.data.id);
+
+            // Add a circle for the icon background
+            nodeGroup.append("circle")
+                .attr("cx", 0)
+                .attr("cy", 30) // Position at the bottom of the node
+                .attr("r", 8)
+                .attr("fill", "white")
+                .attr("stroke", blueColor)
+                .attr("stroke-width", 1)
+                .attr("cursor", "pointer")
+                .on("click", (event) => {
+                    event.stopPropagation();
+                    toggleNode(d);
+                });
+
+            // Add the plus or minus symbol
+            nodeGroup.append("text")
+                .attr("x", 0)
+                .attr("y", 30)
+                .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "central")
+                .attr("font-size", 12)
+                .attr("font-weight", "bold")
+                .attr("fill", blueColor)
+                .attr("cursor", "pointer")
+                .text(isCollapsed ? "+" : "−") // Plus for collapsed, minus for expanded
+                .on("click", (event) => {
+                    event.stopPropagation();
+                    toggleNode(d);
+                });
+        });
+
+        // Update the icon containers state
+        setIconContainers(newIconContainers);
 
         // Add zoom behavior
         const zoom = d3.zoom()
@@ -280,10 +378,10 @@ const TreeChart = ({ data }) => {
             window.removeEventListener('resize', handleResize);
         };
 
-    }, [data]);
+    }, [data, collapsedNodes, isVisible, toggleNode, blueColor]);
 
     return (
-        <div className="tree-chart-container">
+        <div className="tree-chart-container" style={{ width: '100%', height: '100vh', position: 'relative' }}>
             <svg ref={svgRef}></svg>
         </div>
     );

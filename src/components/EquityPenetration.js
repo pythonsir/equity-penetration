@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import TreeChart from './TreeChart';
-import sampleData from '../data/sampleData';
+import { imageMatchData } from '../data/sampleData';
 
 const EquityPenetration = () => {
-    const [data] = useState(sampleData);
+    const [data] = useState(imageMatchData);
 
     return (
         <div className="equity-penetration-container">

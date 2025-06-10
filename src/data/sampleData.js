@@ -276,4 +276,6 @@ const imageMatchData = {
     ]
 };
 
+// Export all data structures
+export { sampleData, fullData, imageMatchData };
 export default imageMatchData; 
