@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import './TreeChart.css';
+import { fetchCompanyChildren } from '../services/api';
 
 const TreeChart = ({ data }) => {
     const svgRef = useRef();
@@ -12,89 +13,133 @@ const TreeChart = ({ data }) => {
         height: window.innerHeight,
         hasChanged: false
     });
+    const [loadingNodes, setLoadingNodes] = useState(new Set()); // 跟踪正在加载的节点
+    const [loadedNodes, setLoadedNodes] = useState(new Set()); // 跟踪已经加载的节点
+    const [treeData, setTreeData] = useState(data); // 存储完整的树数据
 
     // Define colors
     const blueColor = "#6495ED"; // Blue color for all borders and lines
 
-    // Function to wrap text with truncation
-    const wrapText = (text, width) => {
-        text.each(function () {
-            const text = d3.select(this);
-            const words = text.text().split('').reverse();
-            const lineHeight = 1.4; // Increased line height for better spacing
-            const y = text.attr("y");
-            const dy = parseFloat(text.attr("dy"));
-
-            let line = [];
-            let lineNumber = 0;
-            let tspan = text.text(null)
-                .append("tspan")
-                .attr("x", 0)
-                .attr("y", y)
-                .attr("dy", dy + "em");
-
-            let word;
-            let lineLength = 0;
-            const maxCharsPerLine = Math.floor(width / 12); // Approximate chars per line
-            const maxLines = 2; // Maximum number of lines before truncating
-
-            while (words.length && lineNumber < maxLines) {
-                word = words.pop();
-                line.push(word);
-                lineLength++;
-
-                if (lineLength >= maxCharsPerLine) {
-                    // If this is the last allowed line and there are more words
-                    if (lineNumber === maxLines - 1 && words.length > 0) {
-                        // Add ellipsis to indicate truncation
-                        tspan.text(line.join("").slice(0, -2) + "...");
-                        break;
-                    } else {
-                        tspan.text(line.join(""));
-                        line = [];
-                        lineLength = 0;
-                        lineNumber++;
-
-                        // Only create a new tspan if we're not at max lines
-                        if (lineNumber < maxLines) {
-                            tspan = text.append("tspan")
-                                .attr("x", 0)
-                                .attr("y", y)
-                                .attr("dy", lineNumber * lineHeight + dy + "em");
-                        }
-                    }
-                }
+    // 创建用于渲染的数据预处理函数
+    const prepareTreeData = useCallback((rawData) => {
+        // 递归处理每个节点
+        const processNode = (node) => {
+            // 确保每个节点都有hasChildren属性
+            if (node.hasChildren === undefined) {
+                // 如果未定义，则根据children数组判断
+                node.hasChildren = Array.isArray(node.children) && node.children.length > 0;
             }
 
-            // Handle remaining text
-            if (line.length > 0 && lineNumber < maxLines) {
-                // If this is the last allowed line and there are more words
-                if (lineNumber === maxLines - 1 && words.length > 0) {
-                    tspan.text(line.join("").slice(0, -2) + "...");
-                } else {
-                    tspan.text(line.join(""));
-                }
+            // 处理子节点
+            if (Array.isArray(node.children)) {
+                node.children = node.children.map(child => processNode(child));
+            } else {
+                node.children = [];
             }
-        });
-    };
+
+            return node;
+        };
+
+        // 处理整个树
+        return processNode(JSON.parse(JSON.stringify(rawData)));
+    }, []);
+
+    // 更新树数据的useEffect
+    useEffect(() => {
+        if (data) {
+            // 预处理数据，确保每个节点都有hasChildren属性
+            const processedData = prepareTreeData(data);
+            setTreeData(processedData);
+        }
+    }, [data, prepareTreeData]);
+
+    // 更新树数据的函数
+    const updateTreeData = useCallback((originalData, nodeId, children) => {
+        // 递归函数，查找并更新指定ID的节点
+        const updateNode = (node) => {
+            if (node.id === nodeId) {
+                // 找到节点，更新其子节点
+                return { ...node, children };
+            } else if (node.children) {
+                // 递归处理子节点
+                return {
+                    ...node,
+                    children: node.children.map(child => updateNode(child))
+                };
+            }
+            // 未找到，返回原节点
+            return node;
+        };
+
+        // 更新整个树
+        return updateNode(originalData);
+    }, []);
+
+    // 异步加载子节点
+    const loadChildrenAsync = useCallback(async (nodeId) => {
+        if (loadingNodes.has(nodeId)) {
+            return; // 避免重复加载
+        }
+
+        try {
+            // 设置节点为加载状态
+            setLoadingNodes(prev => new Set([...prev, nodeId]));
+
+            // 调用API获取子节点
+            const response = await fetchCompanyChildren(nodeId);
+
+            if (response.success && response.data) {
+                // 更新树数据
+                setTreeData(prevData => updateTreeData(prevData, nodeId, response.data));
+
+                // 标记节点已加载
+                setLoadedNodes(prev => new Set([...prev, nodeId]));
+
+                // 加载完成后展开节点，这样直接显示子节点
+                setCollapsedNodes(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(nodeId); // 从折叠集合中移除，实现展开效果
+                    return newSet;
+                });
+            }
+        } catch (error) {
+            console.error('加载子节点失败:', error);
+        } finally {
+            // 清除加载状态
+            setLoadingNodes(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(nodeId);
+                return newSet;
+            });
+        }
+    }, [loadingNodes, loadedNodes, updateTreeData]);
 
     // Function to toggle node collapse state
     const toggleNode = useCallback((d) => {
         // Store the current transform before toggling
         if (currentTransformRef.current) {
-            // Toggle the node's collapse state
-            setCollapsedNodes(prev => {
-                const nodeId = d.data.id;
-                const newSet = new Set(prev);
-                if (newSet.has(nodeId)) {
-                    newSet.delete(nodeId);
-                } else {
-                    newSet.add(nodeId);
-                }
-                return newSet;
-            });
+            const nodeId = d.data.id;
+
+            const hasChildren = Array.isArray(d.data.children) && d.data.children.length > 0;
+
+            // 如果没有子节点但hasChildren为true，触发异步加载
+            if (!hasChildren && d.data.hasChildren === true) {
+                loadChildrenAsync(nodeId);
+                // 不需要在这里更改折叠状态，loadChildrenAsync函数会在加载完成后处理
+            } else {
+                // 有子节点，切换折叠状态
+                setCollapsedNodes(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(nodeId)) {
+                        newSet.delete(nodeId);
+                    } else {
+                        newSet.add(nodeId);
+                    }
+                    return newSet;
+                });
+            }
         }
-    }, []);
+    }, [loadChildrenAsync]);
 
     // Function to check if a node should be visible
     const isVisible = useCallback((d) => {
@@ -175,7 +220,7 @@ const TreeChart = ({ data }) => {
 
     // Main rendering effect
     useEffect(() => {
-        if (!data || !svgRef.current) return;
+        if (!treeData || !svgRef.current) return;
 
         // Store the current transform for later use
         const previousTransform = currentTransformRef.current;
@@ -212,7 +257,7 @@ const TreeChart = ({ data }) => {
         const g = svg.append("g");
 
         // Create the hierarchical data structure
-        const root = d3.hierarchy(data);
+        const root = d3.hierarchy(treeData);
 
         // Define tree layout - vertical orientation
         const treeLayout = d3.tree()
@@ -317,12 +362,48 @@ const TreeChart = ({ data }) => {
             .text(d => d.data.name)
             .call(wrapText, 110); // Apply text wrapping
 
-        // Add SVG icons directly in the D3 visualization
-        node.filter(d => d.data.children && d.data.children.length > 0).each(function (d) {
+        // 移除加载节点的旋转效果，使用静态图标
+        node.filter(d => loadingNodes.has(d.data.id)).each(function (d) {
             const nodeGroup = d3.select(this);
-            const isCollapsed = collapsedNodes.has(d.data.id);
 
-            // Add a circle for the icon background
+            // 添加加载指示器背景，不使用旋转效果
+            nodeGroup.append("circle")
+                .attr("cx", 0)
+                .attr("cy", 30) // Position at the bottom of the node
+                .attr("r", 10)
+                .attr("fill", "#f5f5f5")
+                .attr("stroke", blueColor)
+                .attr("stroke-width", 1);
+
+            // 添加加载文本
+            nodeGroup.append("text")
+                .attr("x", 0)
+                .attr("y", 30)
+                .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "central")
+                .attr("font-size", 10)
+                .attr("fill", blueColor)
+                .attr("font-weight", "bold")
+                .text("加载中");
+        });
+
+        // 添加展开/折叠图标
+        node.filter(d => {
+            // 节点标记为hasChildren=true，并且不在加载状态
+            return d.data.hasChildren === true &&
+                !loadingNodes.has(d.data.id);
+        }).each(function (d) {
+            const nodeGroup = d3.select(this);
+            const nodeId = d.data.id;
+            const hasChildren = Array.isArray(d.data.children) && d.data.children.length > 0;
+            const isCollapsed = collapsedNodes.has(nodeId);
+
+            // 确定显示的符号：
+            // 如果有子节点且未折叠，显示减号(-)
+            // 其他情况显示加号(+)
+            const showMinusSign = hasChildren && !isCollapsed;
+
+            // 添加展开/折叠图标背景
             nodeGroup.append("circle")
                 .attr("cx", 0)
                 .attr("cy", 30) // Position at the bottom of the node
@@ -333,10 +414,25 @@ const TreeChart = ({ data }) => {
                 .attr("cursor", "pointer")
                 .on("click", (event) => {
                     event.stopPropagation();
-                    toggleNode(d);
+                    // 如果没有子节点但hasChildren为true，触发异步加载
+                    if (!hasChildren && d.data.hasChildren === true) {
+                        loadChildrenAsync(nodeId);
+                        // 不需要在这里更改折叠状态，loadChildrenAsync函数会在加载完成后处理
+                    } else {
+                        // 有子节点，切换折叠状态
+                        setCollapsedNodes(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(nodeId)) {
+                                newSet.delete(nodeId);
+                            } else {
+                                newSet.add(nodeId);
+                            }
+                            return newSet;
+                        });
+                    }
                 });
 
-            // Add the plus or minus symbol
+            // 添加加减号
             nodeGroup.append("text")
                 .attr("x", 0)
                 .attr("y", 30)
@@ -346,10 +442,25 @@ const TreeChart = ({ data }) => {
                 .attr("font-weight", "bold")
                 .attr("fill", blueColor)
                 .attr("cursor", "pointer")
-                .text(isCollapsed ? "+" : "−") // Plus for collapsed, minus for expanded
+                .text(showMinusSign ? "−" : "+") // 根据状态决定显示+或-
                 .on("click", (event) => {
                     event.stopPropagation();
-                    toggleNode(d);
+                    // 如果没有子节点但hasChildren为true，触发异步加载
+                    if (!hasChildren && d.data.hasChildren === true) {
+                        loadChildrenAsync(nodeId);
+                        // 不需要在这里更改折叠状态，loadChildrenAsync函数会在加载完成后处理
+                    } else {
+                        // 有子节点，切换折叠状态
+                        setCollapsedNodes(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(nodeId)) {
+                                newSet.delete(nodeId);
+                            } else {
+                                newSet.add(nodeId);
+                            }
+                            return newSet;
+                        });
+                    }
                 });
         });
 
@@ -383,11 +494,87 @@ const TreeChart = ({ data }) => {
         // Apply the transform
         svg.call(zoom.transform, initialTransform);
 
-    }, [data, dimensions, collapsedNodes, isVisible, toggleNode, getTreeDimensions, calculateOptimalTransform, blueColor]);
+    }, [treeData, dimensions, collapsedNodes, isVisible, toggleNode, getTreeDimensions, calculateOptimalTransform, loadingNodes, prepareTreeData, blueColor]);
+
+    // Function to wrap text with truncation
+    const wrapText = (text, width) => {
+        text.each(function () {
+            const text = d3.select(this);
+            const words = text.text().split('').reverse();
+            const lineHeight = 1.4; // Increased line height for better spacing
+            const y = text.attr("y");
+            const dy = parseFloat(text.attr("dy"));
+
+            let line = [];
+            let lineNumber = 0;
+            let tspan = text.text(null)
+                .append("tspan")
+                .attr("x", 0)
+                .attr("y", y)
+                .attr("dy", dy + "em");
+
+            let word;
+            let lineLength = 0;
+            const maxCharsPerLine = Math.floor(width / 12); // Approximate chars per line
+            const maxLines = 2; // Maximum number of lines before truncating
+
+            while (words.length && lineNumber < maxLines) {
+                word = words.pop();
+                line.push(word);
+                lineLength++;
+
+                if (lineLength >= maxCharsPerLine) {
+                    // If this is the last allowed line and there are more words
+                    if (lineNumber === maxLines - 1 && words.length > 0) {
+                        // Add ellipsis to indicate truncation
+                        tspan.text(line.join("").slice(0, -2) + "...");
+                        break;
+                    } else {
+                        tspan.text(line.join(""));
+                        line = [];
+                        lineLength = 0;
+                        lineNumber++;
+
+                        // Only create a new tspan if we're not at max lines
+                        if (lineNumber < maxLines) {
+                            tspan = text.append("tspan")
+                                .attr("x", 0)
+                                .attr("y", y)
+                                .attr("dy", lineNumber * lineHeight + dy + "em");
+                        }
+                    }
+                }
+            }
+
+            // Handle remaining text
+            if (line.length > 0 && lineNumber < maxLines) {
+                // If this is the last allowed line and there are more words
+                if (lineNumber === maxLines - 1 && words.length > 0) {
+                    tspan.text(line.join("").slice(0, -2) + "...");
+                } else {
+                    tspan.text(line.join(""));
+                }
+            }
+        });
+    };
+
+    // 添加节点加载指示器
+    const renderLoadingIndicator = useCallback(() => {
+        if (loadingNodes.size === 0) return null;
+
+        return (
+            <div className="loading-indicator">
+                <div className="loading-status">
+                    <span>正在加载 {loadingNodes.size} 个节点</span>
+                </div>
+            </div>
+        );
+    }, [loadingNodes.size]);
 
     return (
         <div ref={containerRef} className="tree-chart-container" style={{ width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' }}>
             <svg ref={svgRef} style={{ width: '100%', height: '100%' }}></svg>
+            {renderLoadingIndicator()}
         </div>
     );
 };
