@@ -8,6 +8,8 @@ const TreeChart = ({ data }) => {
     const [collapsedNodes, setCollapsedNodes] = useState(new Set());
     const [iconContainers, setIconContainers] = useState({});
     const rootsRef = useRef(new Map());
+    const zoomRef = useRef(null);
+    const currentTransformRef = useRef(null);
 
     // Define colors
     const blueColor = "#6495ED"; // Blue color for all borders and lines
@@ -76,16 +78,20 @@ const TreeChart = ({ data }) => {
 
     // Function to toggle node collapse state
     const toggleNode = useCallback((d) => {
-        const nodeId = d.data.id;
-        setCollapsedNodes(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(nodeId)) {
-                newSet.delete(nodeId);
-            } else {
-                newSet.add(nodeId);
-            }
-            return newSet;
-        });
+        // Store the current transform before toggling
+        if (currentTransformRef.current) {
+            // Toggle the node's collapse state
+            setCollapsedNodes(prev => {
+                const nodeId = d.data.id;
+                const newSet = new Set(prev);
+                if (newSet.has(nodeId)) {
+                    newSet.delete(nodeId);
+                } else {
+                    newSet.add(nodeId);
+                }
+                return newSet;
+            });
+        }
     }, []);
 
     // Function to check if a node should be visible
@@ -132,8 +138,8 @@ const TreeChart = ({ data }) => {
     useEffect(() => {
         if (!data || !svgRef.current) return;
 
-        // Clean up previous icons
-        cleanupIcons();
+        // Store the current transform for later use
+        const previousTransform = currentTransformRef.current;
 
         // Clear any existing SVG content
         d3.select(svgRef.current).selectAll("*").remove();
@@ -342,25 +348,39 @@ const TreeChart = ({ data }) => {
             .scaleExtent([0.2, 3]) // Allow more zoom range
             .on("zoom", (event) => {
                 g.attr("transform", event.transform);
+                // Store the current transform for later use
+                currentTransformRef.current = event.transform;
             });
+
+        // Store zoom reference
+        zoomRef.current = zoom;
 
         svg.call(zoom);
 
-        // Initial zoom to fit the tree
-        const treeWidth = maxX - minX + 240; // Add some padding
-        const treeHeight = maxY - minY + 100;
+        // Set initial transform - either restore previous or calculate new one
+        let initialTransform;
 
-        const scale = Math.min(
-            containerWidth / treeWidth,
-            containerHeight / treeHeight,
-            1 // Cap at 1 to avoid making it too large
-        ) * 0.9; // Slightly smaller to ensure it fits
+        if (previousTransform) {
+            // Use the previous transform if available
+            initialTransform = previousTransform;
+        } else {
+            // Calculate initial transform to fit the tree
+            const treeWidth = maxX - minX + 240; // Add some padding
+            const treeHeight = maxY - minY + 100;
 
-        const initialTransform = d3.zoomIdentity
-            .translate(containerWidth / 2, containerHeight / 4)
-            .scale(scale)
-            .translate(-treeWidth / 2, 0);
+            const scale = Math.min(
+                containerWidth / treeWidth,
+                containerHeight / treeHeight,
+                1 // Cap at 1 to avoid making it too large
+            ) * 0.9; // Slightly smaller to ensure it fits
 
+            initialTransform = d3.zoomIdentity
+                .translate(containerWidth / 2, containerHeight / 4)
+                .scale(scale)
+                .translate(-treeWidth / 2, 0);
+        }
+
+        // Apply the transform
         svg.call(zoom.transform, initialTransform);
 
         // Add resize handler
