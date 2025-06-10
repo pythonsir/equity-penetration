@@ -8,14 +8,6 @@
   overflow: hidden;
 }
 
-body, html {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
 .App-logo {
   height: 40vmin;
   pointer-events: none;
@@ -51,16 +43,6 @@ body, html {
   }
 }
 
-.equity-penetration-container {
-  width: 100%;
-  height: 100vh;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
 .header-card {
   margin-bottom: 24px;
   text-align: left;
@@ -78,33 +60,4 @@ body, html {
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow-x: auto;
-}
-
-.tree-chart-container {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  flex: 1;
-  display: flex;
-}
-
-svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  background-color: #fff;
-  flex: 1;
-}
-
-.node text {
-  font-size: 12px;
-  font-family: Arial, sans-serif;
-}
-
-.link {
-  fill: none;
-  stroke: #ccc;
-  stroke-width: 1px;
 }

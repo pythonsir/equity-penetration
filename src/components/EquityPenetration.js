@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import TreeChart from './TreeChart';
 import { imageMatchData } from '../data/sampleData';
+import './EquityPenetration.css';
 
 const EquityPenetration = () => {
     const [data] = useState(imageMatchData);

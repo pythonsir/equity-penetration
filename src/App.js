@@ -1,6 +1,6 @@
 import './App.css';
 import 'antd/dist/reset.css';
-import EquityPenetration from './components/EquityPenetration';
+import { EquityPenetration } from './components';
 
 function App() {
   return (

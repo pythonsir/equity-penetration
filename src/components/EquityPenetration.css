@@ -1,0 +1,29 @@
+/* EquityPenetration Component Styles */
+
+.equity-penetration-container {
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Global styles for the chart area */
+svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background-color: #fff;
+  flex: 1;
+}
+
+/* For responsive behavior */
+body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+} 

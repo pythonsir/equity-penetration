@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as d3 from 'd3';
+import './TreeChart.css';
 
 const TreeChart = ({ data }) => {
     const svgRef = useRef();
@@ -303,13 +304,7 @@ const TreeChart = ({ data }) => {
             .attr("y", -30)
             .attr("rx", 4)
             .attr("ry", 4)
-            .attr("fill", d => {
-                // Highlight the main company in blue
-                if (d.data.name === "山东映客科技有限责任公司") {
-                    return blueColor;
-                }
-                return "#fff";
-            })
+            .attr("fill", "#fff") // All rectangles are white now
             .attr("stroke", blueColor) // Blue border
             .attr("stroke-width", 1);
 
@@ -318,12 +313,7 @@ const TreeChart = ({ data }) => {
             .attr("text-anchor", "middle")
             .attr("font-size", 12)
             .attr("dy", "-0.3em") // Start a bit higher to accommodate multiple lines
-            .attr("fill", d => {
-                if (d.data.name === "山东映客科技有限责任公司") {
-                    return "#fff";
-                }
-                return "#333";
-            })
+            .attr("fill", "#333") // All text is dark gray
             .text(d => d.data.name)
             .call(wrapText, 110); // Apply text wrapping
 
