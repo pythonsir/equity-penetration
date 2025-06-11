@@ -102,6 +102,9 @@ const sampleData = {
 
 欢迎提交问题和拉取请求。对于重大更改，请先开issue讨论您想要更改的内容。
 
+## 🔥 关注微信公众号 🔥
+### 📱 **老夫撸代码** 📱
+
 ## 许可证
 
-[MIT](LICENSE)
+本项目采用 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) 许可证 - GNU通用公共许可证
